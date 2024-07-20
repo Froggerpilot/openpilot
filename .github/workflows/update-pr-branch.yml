@@ -1,0 +1,34 @@
+name: Sync "FrogPilot-Staging" to "MAKE-PRS-HERE"
+
+on:
+  push:
+    branches:
+      - FrogPilot-Staging
+  workflow_dispatch:
+
+env:
+  SOURCE_BRANCH: FrogPilot-Staging
+  DESTINATION_BRANCH: MAKE-PRS-HERE
+  TZ: America/Phoenix
+
+jobs:
+  sync-branches:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git identity
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Sync changes from ${{ env.SOURCE_BRANCH }} to ${{ env.DESTINATION_BRANCH }}
+        run: |
+          git fetch origin
+          git checkout -B temp-branch origin/${{ env.SOURCE_BRANCH }}
+          git reset --hard HEAD~1
+          git push --force origin HEAD:${{ env.DESTINATION_BRANCH }}
