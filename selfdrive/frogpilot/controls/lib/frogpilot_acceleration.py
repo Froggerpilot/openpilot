@@ -3,7 +3,7 @@ from openpilot.common.numpy_fast import clip, interp
 from openpilot.selfdrive.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.selfdrive.controls.lib.longitudinal_planner import A_CRUISE_MIN, get_max_accel
 
-from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_variables import CITY_SPEED_LIMIT, CRUISING_SPEED, get_max_allowed_accel
+from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_variables import CITY_SPEED_LIMIT, CRUISING_SPEED
 
 A_CRUISE_MIN_ECO = A_CRUISE_MIN / 4
 A_CRUISE_MIN_SPORT = A_CRUISE_MIN / 2
@@ -24,6 +24,9 @@ def get_max_accel_sport_plus(v_ego):
 
 def get_max_accel_ramp_off(max_accel, v_cruise, v_ego):
   return interp(v_ego, [0., v_cruise * 0.5, v_cruise * 0.75, v_cruise], [max_accel, max_accel, max_accel / 2, max_accel / 4])
+
+def get_max_allowed_accel(v_ego):
+  return interp(v_ego, [0., 5., 20.], [4.0, 4.0, 2.0])  # ISO 15622:2018
 
 class FrogPilotAcceleration:
   def __init__(self, FrogPilotPlanner):
