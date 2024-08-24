@@ -9,6 +9,8 @@ from openpilot.selfdrive.car.toyota.values import CAR, STATIC_DSU_MSGS, NO_STOP_
                                         UNSUPPORTED_DSU_CAR, STOP_AND_GO_CAR, TSS2_CAR
 from opendbc.can.packer import CANPacker
 
+from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_variables import get_max_allowed_accel
+
 LongCtrlState = car.CarControl.Actuators.LongControlState
 SteerControlType = car.CarParams.SteerControlType
 VisualAlert = car.CarControl.HUDControl.VisualAlert
@@ -176,9 +178,9 @@ class CarController(CarControllerBase):
     if CC.longActive:
       if frogpilot_toggles.sport_plus:
         if self.frogs_go_moo_tune:
-          pcm_accel_cmd = clip(gas_accel + self.pcm_accel_comp, self.params.ACCEL_MIN, self.params.ACCEL_MAX_PLUS)
+          pcm_accel_cmd = clip(gas_accel + self.pcm_accel_comp, self.params.ACCEL_MIN, get_max_allowed_accel(CS.out.vEgo))
         else:
-          pcm_accel_cmd = clip(actuators.accel + accel_offset, self.params.ACCEL_MIN, self.params.ACCEL_MAX_PLUS)
+          pcm_accel_cmd = clip(actuators.accel + accel_offset, self.params.ACCEL_MIN, get_max_allowed_accel(CS.out.vEgo))
       else:
         if self.frogs_go_moo_tune:
           pcm_accel_cmd = clip(gas_accel + self.pcm_accel_comp, self.params.ACCEL_MIN, self.params.ACCEL_MAX)
@@ -247,7 +249,7 @@ class CarController(CarControllerBase):
       if self.frame % 20 == 0 or send_ui:
         can_sends.append(toyotacan.create_ui_command(self.packer, steer_alert, pcm_cancel_cmd, hud_control.leftLaneVisible,
                                                      hud_control.rightLaneVisible, hud_control.leftLaneDepart,
-                                                     hud_control.rightLaneDepart, CC.enabled, CS.lkas_hud, lat_active))
+                                                     hud_control.rightLaneDepart, CC.enabled, CS.lkas_hud, lat_active, CS.lkas_status))
 
       if (self.frame % 100 == 0 or send_ui) and (self.CP.enableDsu or self.CP.flags & ToyotaFlags.DISABLE_RADAR.value):
         can_sends.append(toyotacan.create_fcw_command(self.packer, fcw_alert))
