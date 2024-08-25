@@ -1,14 +1,14 @@
-name: Resync Branch
+name: Sync Branch
 
 on:
   workflow_dispatch:
     inputs:
       target_url:
-        description: 'URL of the target branch to sync with'
+        description: 'URL of the branch to sync with'
         required: true
         type: string
       source_branch:
-        description: 'Branch in the repository to update'
+        description: 'Branch in your repo to update'
         required: true
         type: string
 
@@ -17,12 +17,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout the Repository
+    - name: Checkout the Froggerpilot Repository
       uses: actions/checkout@v3
       with:
         repository: Froggerpilot/openpilot
         token: ${{ secrets.GITHUB_TOKEN }}
-        ref: ${{ github.event.inputs.source_branch }}
+        ref: FrogPilot
 
     - name: Extract Target Repo and Branch
       id: extract-info
@@ -35,39 +35,29 @@ jobs:
         echo "TARGET_BRANCH=${TARGET_BRANCH}" >> $GITHUB_ENV
         echo "Target Repository: $TARGET_REPO"
         echo "Target Branch: $TARGET_BRANCH"
-
+    
     - name: Clone External Repository
       run: |
         git clone https://github.com/${{ env.TARGET_REPO }} external-repo
         cd external-repo
+        echo "Available branches:"
+        git branch -a
         git checkout ${TARGET_BRANCH}
       env:
         TARGET_REPO: ${{ env.TARGET_REPO }}
         TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
 
-    - name: Sync Branch with Target Branch
+    - name: Create and Push New Branch to Froggerpilot Repository
       run: |
         cd external-repo
         git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Froggerpilot/openpilot.git
         git fetch origin
-        git checkout -b temp-sync-branch
-
-        # Merge changes from target branch into temporary sync branch
-        git pull origin ${TARGET_BRANCH}
-
-        # Push the merged changes to the branch being updated
+        git checkout -b temp-sync-branch  # Create a temporary branch
+        git merge --no-ff ${TARGET_BRANCH}  # Merge the target branch changes
+        git push --force origin temp-sync-branch  # Push the changes
         cd ..
-        git checkout ${GITHUB_REF#refs/heads/}
-        git merge --no-ff external-repo/temp-sync-branch -m "Sync with ${TARGET_BRANCH} from ${TARGET_REPO}"
-        git push --force
-
-        # Clean up
-        rm -rf external-repo
+        rm -rf external-repo  # Remove the directory after sync
       env:
         TARGET_REPO: ${{ env.TARGET_REPO }}
         TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Display sync information
-      run: |
-        echo "Branch ${GITHUB_REF#refs/heads/} has been updated with changes from ${TARGET_BRANCH} in ${TARGET_REPO}."
