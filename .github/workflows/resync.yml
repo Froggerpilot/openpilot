@@ -26,9 +26,12 @@ jobs:
       - name: Extract repository and branch from URL
         id: extract_info
         run: |
-          echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
-          REPO_URL=$(echo $TARGET_URL | sed -e 's|/tree/.*||' -e 's|https://github.com/||')
+          TARGET_URL=${{ github.event.inputs.target_url }}
+          echo "TARGET_URL=$TARGET_URL"
+          REPO_URL=$(echo $TARGET_URL | sed -e 's|https://github.com/||' -e 's|/tree/.*||')
           BRANCH_NAME=$(echo $TARGET_URL | sed -e 's|.*tree/||')
+          echo "REPO_URL=$REPO_URL"
+          echo "BRANCH_NAME=$BRANCH_NAME"
           echo "REPO_URL=$REPO_URL" >> $GITHUB_ENV
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
