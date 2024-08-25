@@ -40,5 +40,9 @@ jobs:
     - name: Push to main repository
       run: |
         cd external-repo
-        git remote add origin "https://github.com/Froggerpilot/openpilot.git"
+        if git remote get-url origin; then
+          echo "Remote 'origin' already exists."
+        else
+          git remote add origin "https://github.com/Froggerpilot/openpilot.git"
+        fi
         git push --force origin $TARGET_BRANCH
