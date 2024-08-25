@@ -44,8 +44,7 @@ jobs:
     - name: Create and Push New Branch to Froggerpilot Repository
       run: |
         cd external-repo
-        git remote remove origin || true
-        git remote add origin https://github.com/Froggerpilot/openpilot.git
+        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Froggerpilot/openpilot.git
         git fetch origin
         git checkout -b new-branch-${TARGET_BRANCH}  # Create a new branch in the local repo
         git push --force origin new-branch-${TARGET_BRANCH}  # Push the new branch to the remote
