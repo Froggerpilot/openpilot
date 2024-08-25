@@ -39,22 +39,24 @@ jobs:
         run: |
           git clone https://github.com/${{ env.REPO_URL }} external-repo
           cd external-repo
+          git fetch origin
           git checkout -b temp-sync-branch origin/${{ env.BRANCH_NAME }}
 
-      - name: Fetch and merge
+      - name: Add your repository remote
         run: |
           cd external-repo
           git remote add your-repo https://github.com/Froggerpilot/openpilot.git
-          git fetch your-repo
-          git checkout temp-sync-branch
-          git merge --strategy-option theirs your-repo/${{ github.event.inputs.target_branch }} || { echo "Merge conflicts detected, manual resolution required"; exit 1; }
 
-      - name: Resolve conflicts (if any)
+      - name: Fetch your repository
         run: |
           cd external-repo
-          git status
-          git diff --name-only --diff-filter=U
-          echo "Conflicts need to be resolved manually if any files are listed."
+          git fetch your-repo
+
+      - name: Merge target branch into your branch
+        run: |
+          cd external-repo
+          git checkout temp-sync-branch
+          git merge your-repo/${{ github.event.inputs.target_branch }} --strategy-option theirs || { echo "Merge conflicts detected, manual resolution required"; exit 1; }
 
       - name: Push changes to your repository
         run: |
