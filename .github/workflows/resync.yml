@@ -21,7 +21,7 @@ jobs:
         with:
           repository: Froggerpilot/openpilot
           token: ${{ secrets.GITHUB_TOKEN }}
-          ref: FrogPilot
+          ref: ${{ github.event.inputs.target_branch }}
 
       - name: Extract Target Repo and Branch
         id: extract-info
@@ -35,27 +35,27 @@ jobs:
           echo "TARGET_REPO=${TARGET_REPO}" >> $GITHUB_ENV
           echo "TARGET_BRANCH=${TARGET_BRANCH}" >> $GITHUB_ENV
 
-      - name: Clone the target repository and fetch the target branch
+      - name: Clone the target repository
         run: |
           git clone https://github.com/${{ env.TARGET_REPO }} external-repo
           cd external-repo
           git fetch origin $TARGET_BRANCH
-          git checkout -b temp-sync-branch origin/$TARGET_BRANCH
+          git checkout -b temp-sync-branch origin/$TARGET_BRANCH || exit 1
 
-      - name: Checkout the branch in your repository
+      - name: Checkout the target branch in your repository
         run: |
           cd external-repo
           git remote add your-repo https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Froggerpilot/openpilot.git
           git fetch your-repo
-          git checkout -b temp-local-sync your-repo/${{ env.TARGET_BRANCH }}
+          git checkout -b temp-local-sync your-repo/${{ github.event.inputs.target_branch }} || exit 1
 
       - name: Merge target branch into your branch
         run: |
           cd external-repo
           git checkout temp-local-sync
-          git merge temp-sync-branch --no-edit
-          git push your-repo temp-local-sync:${{ github.event.inputs.target_branch }} --force
-          
+          git merge temp-sync-branch --no-edit || exit 1
+          git push your-repo temp-local-sync:${{ github.event.inputs.target_branch }} --force || exit 1
+
       - name: Clean up
         run: |
           cd ..
