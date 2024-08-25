@@ -42,6 +42,12 @@ jobs:
           git fetch origin
           git checkout -b temp-sync-branch origin/${{ env.BRANCH_NAME }}
 
+      - name: Configure Git user
+        run: |
+          cd external-repo
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+
       - name: Add your repository remote
         run: |
           cd external-repo
