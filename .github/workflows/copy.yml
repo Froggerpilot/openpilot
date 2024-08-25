@@ -7,10 +7,6 @@ on:
         description: 'URL of the target branch to copy'
         required: true
         type: string
-      target_branch:
-        description: 'Name of the target branch'
-        required: true
-        type: string
 
 jobs:
   copy-branch:
@@ -22,17 +18,20 @@ jobs:
         repository: ${{ github.repository }}
         token: ${{ secrets.GITHUB_TOKEN }}
         ref: ${{ github.ref }}
-      
+
     - name: Extract target repo and branch
       id: extract
       run: |
-        echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
-        echo "TARGET_BRANCH=${{ github.event.inputs.target_branch }}" >> $GITHUB_ENV
+        # Extract the repo and branch from the URL
+        TARGET_URL="${{ github.event.inputs.target_url }}"
+        REPO_URL=$(echo $TARGET_URL | sed 's/tree\/.*//')
+        TARGET_BRANCH=$(echo $TARGET_URL | sed 's/.*tree\///')
+
+        echo "REPO_URL=${REPO_URL}" >> $GITHUB_ENV
+        echo "TARGET_BRANCH=${TARGET_BRANCH}" >> $GITHUB_ENV
 
     - name: Clone target repository
       run: |
-        REPO_URL=$(echo $TARGET_URL | sed 's/tree\/.*//')
-        echo "REPO_URL=${REPO_URL}" >> $GITHUB_ENV
         git clone $REPO_URL external-repo
         cd external-repo
         git fetch origin $TARGET_BRANCH
