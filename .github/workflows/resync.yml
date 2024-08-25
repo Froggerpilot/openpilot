@@ -42,6 +42,12 @@ jobs:
           git fetch origin $TARGET_BRANCH
           git checkout -b temp-sync-branch origin/$TARGET_BRANCH || exit 1
 
+      - name: Configure Git Identity
+        run: |
+          cd external-repo
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+
       - name: Checkout the target branch in your repository
         run: |
           cd external-repo
