@@ -23,11 +23,20 @@ jobs:
           repository: 'Froggerpilot/openpilot'
           ref: ${{ github.event.inputs.target_branch }}
 
+      - name: Extract repository and branch from URL
+        id: extract_info
+        run: |
+          echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
+          REPO_URL=$(echo $TARGET_URL | sed -e 's|/tree/.*||' -e 's|https://github.com/||')
+          BRANCH_NAME=$(echo $TARGET_URL | sed -e 's|.*tree/||')
+          echo "REPO_URL=$REPO_URL" >> $GITHUB_ENV
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
       - name: Clone target repository and branch
         run: |
-          git clone ${GITHUB_EVENT_INPUTS_TARGET_URL} external-repo
+          git clone https://github.com/${{ env.REPO_URL }} external-repo
           cd external-repo
-          git checkout -b temp-sync-branch origin/$(basename ${GITHUB_EVENT_INPUTS_TARGET_URL})
+          git checkout -b temp-sync-branch origin/${{ env.BRANCH_NAME }}
 
       - name: Fetch and merge
         run: |
