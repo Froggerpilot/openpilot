@@ -1,9 +1,15 @@
+name: Copy/Update Branch
+
 on:
   workflow_dispatch:
     inputs:
       target_url:
         description: 'URL of the branch to copy'
         required: true
+        type: string
+      new_branch_name:
+        description: 'Name for the new branch (optional, default is "copy-<target-branch-name>")'
+        required: false
         type: string
 
 jobs:
@@ -29,6 +35,18 @@ jobs:
         echo "TARGET_BRANCH=${TARGET_BRANCH}" >> $GITHUB_ENV
         echo "Target Repository: $TARGET_REPO"
         echo "Target Branch: $TARGET_BRANCH"
+
+    - name: Generate Branch Name
+      id: generate-branch-name
+      run: |
+        if [ -z "${{ github.event.inputs.new_branch_name }}" ]; then
+          NEW_BRANCH_NAME="copy-${TARGET_BRANCH}"
+        else
+          NEW_BRANCH_NAME="${{ github.event.inputs.new_branch_name }}"
+        fi
+        echo "NEW_BRANCH_NAME=${NEW_BRANCH_NAME}" >> $GITHUB_ENV
+        echo "New Branch Name: ${NEW_BRANCH_NAME}"
+
     - name: Clone External Repository
       run: |
         git clone https://github.com/${{ env.TARGET_REPO }} external-repo
@@ -43,9 +61,10 @@ jobs:
         cd external-repo
         git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Froggerpilot/openpilot.git
         git fetch origin
-        git checkout -b copy-${TARGET_BRANCH}  # Create a new branch in the local repo
-        git push --force origin copy-${TARGET_BRANCH}  # Push the new branch to the remote
+        git checkout -b ${{ env.NEW_BRANCH_NAME }}  # Create a new branch in the local repo
+        git push --force origin ${{ env.NEW_BRANCH_NAME }}  # Push the new branch to the remote
       env:
         TARGET_REPO: ${{ env.TARGET_REPO }}
         TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        NEW_BRANCH_NAME: ${{ env.NEW_BRANCH_NAME }}
