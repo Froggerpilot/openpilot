@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target_url:
-        description: 'URL of the target branch to sync from'
+        description: 'URL of the target branch to sync from (e.g., https://github.com/garrettpall/openpilot/tree/frogpilot-gm-tune)'
         required: true
         type: string
       target_branch:
@@ -13,56 +13,42 @@ on:
         type: string
 
 jobs:
-  sync-branch:
+  sync-branches:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout the Froggerpilot Repository
+      - name: Checkout target branch in your repo
         uses: actions/checkout@v3
         with:
-          repository: Froggerpilot/openpilot
-          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: 'Froggerpilot/openpilot'
           ref: ${{ github.event.inputs.target_branch }}
 
-      - name: Extract Target Repo and Branch
-        id: extract-info
+      - name: Clone target repository and branch
         run: |
-          echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
-          echo "TARGET_BRANCH=${{ github.event.inputs.target_branch }}" >> $GITHUB_ENV
-          
-          TARGET_URL=${{ github.event.inputs.target_url }}
-          TARGET_REPO=$(echo $TARGET_URL | sed -E 's|https://github.com/([^/]+/[^/]+).*|\1|')
-          TARGET_BRANCH=$(echo $TARGET_URL | sed -E 's|https://github.com/[^/]+/[^/]+/tree/(.+)|\1|')
-          echo "TARGET_REPO=${TARGET_REPO}" >> $GITHUB_ENV
-          echo "TARGET_BRANCH=${TARGET_BRANCH}" >> $GITHUB_ENV
-
-      - name: Clone the target repository
-        run: |
-          git clone https://github.com/${{ env.TARGET_REPO }} external-repo
+          git clone ${GITHUB_EVENT_INPUTS_TARGET_URL} external-repo
           cd external-repo
-          git fetch origin $TARGET_BRANCH
-          git checkout -b temp-sync-branch origin/$TARGET_BRANCH || exit 1
+          git checkout -b temp-sync-branch origin/$(basename ${GITHUB_EVENT_INPUTS_TARGET_URL})
 
-      - name: Configure Git Identity
+      - name: Fetch and merge
         run: |
           cd external-repo
-          git config user.email "actions@github.com"
-          git config user.name "GitHub Actions"
-
-      - name: Checkout the target branch in your repository
-        run: |
-          cd external-repo
-          git remote add your-repo https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Froggerpilot/openpilot.git
+          git remote add your-repo https://github.com/Froggerpilot/openpilot.git
           git fetch your-repo
-          git checkout -b temp-local-sync your-repo/${{ github.event.inputs.target_branch }} || exit 1
+          git checkout temp-sync-branch
+          git merge --strategy-option theirs your-repo/${{ github.event.inputs.target_branch }} || { echo "Merge conflicts detected, manual resolution required"; exit 1; }
 
-      - name: Merge target branch into your branch
+      - name: Resolve conflicts (if any)
         run: |
           cd external-repo
-          git checkout temp-local-sync
-          git merge temp-sync-branch --no-edit || exit 1
-          git push your-repo temp-local-sync:${{ github.event.inputs.target_branch }} --force || exit 1
+          git status
+          git diff --name-only --diff-filter=U
+          echo "Conflicts need to be resolved manually if any files are listed."
+
+      - name: Push changes to your repository
+        run: |
+          cd external-repo
+          git push your-repo temp-sync-branch:${{ github.event.inputs.target_branch }} --force || exit 1
 
       - name: Clean up
         run: |
-          cd ..
           rm -rf external-repo
