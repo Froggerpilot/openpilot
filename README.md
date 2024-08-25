@@ -1,4 +1,4 @@
-https://installer.comma.ai/froggerpilot/branch-name
+installer.comma.ai/froggerpilot/branch-name
 
 [![openpilot on the comma 3X](https://i.imgur.com/Zwv9SaN.png)](https://comma.ai/shop/comma-3x)
 
