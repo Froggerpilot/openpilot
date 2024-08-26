@@ -26,9 +26,40 @@ jobs:
           git config --global user.name "${{ github.actor }}"
           git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: Sync changes from ${{ env.SOURCE_BRANCH }} to ${{ env.DESTINATION_BRANCH }}
+      - name: Fetch and checkout source branch
         run: |
           git fetch origin
-          git checkout -B temp-branch origin/${{ env.SOURCE_BRANCH }}
+          git checkout ${{ env.SOURCE_BRANCH }}
+
+      - name: Create a temporary branch excluding the last commit
+        run: |
+          git checkout -b temp-branch
           git reset --hard HEAD~1
-          git push --force origin HEAD:${{ env.DESTINATION_BRANCH }}
+
+      - name: Checkout destination branch
+        run: |
+          git checkout ${{ env.DESTINATION_BRANCH }}
+
+      - name: Merge changes from temp branch, allowing unrelated histories
+        run: |
+          git merge temp-branch --allow-unrelated-histories -X theirs --no-commit
+
+      - name: Squash and commit changes with date suffix
+        run: |
+          DAY=$(TZ=${{ env.TZ }} date +"%-d")
+          case $DAY in
+            1|21|31) SUFFIX="st" ;;
+            2|22) SUFFIX="nd" ;;
+            3|23) SUFFIX="rd" ;;
+            *) SUFFIX="th" ;;
+          esac
+          CURRENT_DATE=$(TZ=${{ env.TZ }} date +"%B ${DAY}${SUFFIX}, %Y Update")
+          git commit -m "$CURRENT_DATE"
+
+      - name: Force push changes to destination branch
+        run: |
+          git push --force-with-lease origin ${{ env.DESTINATION_BRANCH }}
+
+      - name: Clean up temporary branch
+        run: |
+          git branch -D temp-branch
