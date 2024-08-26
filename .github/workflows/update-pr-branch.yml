@@ -26,20 +26,25 @@ jobs:
           git config --global user.name "${{ github.actor }}"
           git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
-      - name: Fetch and checkout destination branch
+      - name: Fetch and checkout source branch
         run: |
           git fetch origin
+          git checkout ${{ env.SOURCE_BRANCH }}
+
+      - name: Create a temporary branch excluding the last commit
+        run: |
+          git checkout -b temp-branch
+          git reset --hard HEAD~1
+
+      - name: Checkout destination branch
+        run: |
           git checkout ${{ env.DESTINATION_BRANCH }}
 
-      - name: Merge source branch into destination with conflict resolution
+      - name: Merge changes from temp branch, allowing unrelated histories
         run: |
-          git merge origin/${{ env.SOURCE_BRANCH }} --strategy-option theirs --allow-unrelated-histories || true
-          if [ -n "$(git status --porcelain)" ]; then
-            git add -A
-            git commit --no-edit --allow-empty
-          fi
+          git merge temp-branch --allow-unrelated-histories -X theirs --no-commit
 
-      - name: Generate and push commit with date suffix
+      - name: Squash and commit changes with date suffix
         run: |
           DAY=$(TZ=${{ env.TZ }} date +"%-d")
           case $DAY in
@@ -49,5 +54,12 @@ jobs:
             *) SUFFIX="th" ;;
           esac
           CURRENT_DATE=$(TZ=${{ env.TZ }} date +"%B ${DAY}${SUFFIX}, %Y Update")
-          git commit --allow-empty -m "$CURRENT_DATE"
-          git push origin ${{ env.DESTINATION_BRANCH }}
+          git commit -m "$CURRENT_DATE"
+
+      - name: Force push changes to destination branch
+        run: |
+          git push --force-with-lease origin ${{ env.DESTINATION_BRANCH }}
+
+      - name: Clean up temporary branch
+        run: |
+          git branch -D temp-branch
