@@ -44,11 +44,11 @@ def only_offroad(started, params, CP: car.CarParams) -> bool:
 # FrogPilot functions
 def allow_logging(started, params, CP: car.CarParams) -> bool:
   allow_logging = not (params.get_bool("DeviceManagement") and params.get_bool("NoLogging"))
-  return False
+  return allow_logging and logging(started, params, CP)
 
 def allow_uploads(started, params, CP: car.CarParams) -> bool:
   allow_uploads = not (params.get_bool("DeviceManagement") and params.get_bool("NoUploads") and not params.get_bool("DisableOnroadUploads"))
-  return False
+  return allow_uploads
 
 procs = [
   DaemonProcess("manage_athenad", "system.athena.manage_athenad", "AthenadPid"),
