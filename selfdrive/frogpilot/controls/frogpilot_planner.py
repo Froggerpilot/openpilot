@@ -13,8 +13,8 @@ from openpilot.selfdrive.frogpilot.controls.lib.conditional_experimental_mode im
 from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_acceleration import FrogPilotAcceleration
 from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_events import FrogPilotEvents
 from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_following import FrogPilotFollowing
-from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_functions import MovingAverageCalculator, calculate_lane_width, calculate_road_curvature, update_frogpilot_toggles
-from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_variables import CITY_SPEED_LIMIT, CRUISING_SPEED, MODEL_LENGTH, PLANNER_TIME, PROBABILITY
+from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_functions import WeightedMovingAverageCalculator, calculate_lane_width, calculate_road_curvature, update_frogpilot_toggles
+from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_variables import CITY_SPEED_LIMIT, CRUISING_SPEED, MODEL_LENGTH, PLANNER_TIME, THRESHOLD
 from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_vcruise import FrogPilotVCruise
 
 GearShifter = car.CarState.GearShifter
@@ -43,7 +43,7 @@ class FrogPilotPlanner:
     self.tracking_lead_distance = 0
     self.v_cruise = 0
 
-    self.tracking_lead_mac = MovingAverageCalculator()
+    self.tracking_lead_mac = WeightedMovingAverageCalculator(window_size=4)
 
   def update(self, carState, controlsState, frogpilotCarControl, frogpilotCarState, frogpilotNavigation, modelData, radarState, frogpilot_toggles):
     if frogpilot_toggles.radarless_model:
@@ -122,6 +122,9 @@ class FrogPilotPlanner:
     self.tracking_lead = self.set_lead_status(lead_distance, stopping_distance, v_ego)
     if frogpilot_toggles.openpilot_longitudinal:
       self.v_cruise = self.frogpilot_vcruise.update(carState, controlsState, frogpilotCarControl, frogpilotCarState, frogpilotNavigation, modelData, v_cruise, v_ego, frogpilot_toggles)
+    else:
+      self.frogpilot_vcruise.mtsc_target = v_cruise
+      self.frogpilot_vcruise.vtsc_target = v_cruise
 
     if self.frogpilot_events.frame == 1:  # Force update to check the current state of "Always On Lateral" and holiday theme
       update_frogpilot_toggles()
@@ -131,7 +134,7 @@ class FrogPilotPlanner:
     following_lead &= v_ego > CRUISING_SPEED or self.tracking_lead
 
     self.tracking_lead_mac.add_data(following_lead)
-    return self.tracking_lead_mac.get_moving_average() >= PROBABILITY
+    return self.tracking_lead_mac.get_weighted_average() >= THRESHOLD
 
   def publish(self, sm, pm, frogpilot_toggles):
     frogpilot_plan_send = messaging.new_message('frogpilotPlan')
@@ -169,7 +172,7 @@ class FrogPilotPlanner:
     frogpilotPlan.maxAcceleration = float(self.frogpilot_acceleration.max_accel)
     frogpilotPlan.minAcceleration = float(self.frogpilot_acceleration.min_accel)
 
-    frogpilotPlan.redLight = self.cem.stop_light_detected
+    frogpilotPlan.redLight = bool(self.cem.stop_light_detected)
 
     frogpilotPlan.slcOverridden = bool(self.frogpilot_vcruise.override_slc)
     frogpilotPlan.slcOverriddenSpeed = float(self.frogpilot_vcruise.overridden_speed)

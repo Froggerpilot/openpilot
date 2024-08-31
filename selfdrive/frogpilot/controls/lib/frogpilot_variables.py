@@ -18,7 +18,7 @@ CITY_SPEED_LIMIT = 25                                   # 55mph is typically the
 CRUISING_SPEED = 5                                      # Roughly the speed cars go when not touching the gas while in drive
 MODEL_LENGTH = ModelConstants.IDX_N                     # Minimum length of the model
 PLANNER_TIME = ModelConstants.T_IDXS[MODEL_LENGTH - 1]  # Length of time the model projects out for
-PROBABILITY = 0.6                                       # 60% chance of condition being true
+THRESHOLD = 0.6                                         # 60% chance of condition being true
 
 def get_max_allowed_accel(v_ego):
   return interp(v_ego, [0., 5., 20.], [4.0, 4.0, 2.0])  # ISO 15622:2018
@@ -107,6 +107,8 @@ class FrogPilotVariables:
     toggle.conditional_navigation_lead = toggle.conditional_navigation and self.params.get_bool("CENavigationLead")
     toggle.conditional_navigation_turns = toggle.conditional_navigation and self.params.get_bool("CENavigationTurns")
     toggle.conditional_signal = toggle.conditional_experimental_mode and self.params.get_bool("CESignal")
+    if toggle.conditional_experimental_mode:
+      self.params.put_bool("ExperimentalMode", True)
 
     custom_alerts = self.params.get_bool("CustomAlerts")
     toggle.green_light_alert = custom_alerts and self.params.get_bool("GreenLightAlert")
