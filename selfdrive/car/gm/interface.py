@@ -115,11 +115,6 @@ class CarInterface(CarInterfaceBase):
     else:
       ret.transmissionType = TransmissionType.automatic
 
-    if params.get_bool("ExperimentalGMTune"):
-      ret.stoppingDecelRate = 0.3
-      ret.vEgoStopping = 0.15
-      ret.vEgoStarting = 0.15
-
     if use_new_api:
       ret.longitudinalTuning.kiBP = [5., 35.]
     else:
@@ -140,16 +135,20 @@ class CarInterface(CarInterfaceBase):
 
       # Tuning for experimental long
       if use_new_api:
-        ret.longitudinalTuning.kiV = [2.0, 1.5]
-        ret.vEgoStopping = 0.1
-        ret.vEgoStarting = 0.1
+        ret.longitudinalTuning.kiV = [1.0, 1.0]
       else:
         ret.longitudinalTuning.kpV = [2.0, 1.5]
         ret.longitudinalTuning.kiV = [0.72]
 
-      ret.stoppingDecelRate = 2.0  # reach brake quickly after enabling
+      ret.stoppingDecelRate = 1.0  # reach brake quickly after enabling
       ret.vEgoStopping = 0.25
       ret.vEgoStarting = 0.25
+      ret.stopAccel = -0.20
+
+      if params.get_bool("ExperimentalGMTune"):
+        ret.stoppingDecelRate = 0.5
+        ret.vEgoStopping = 0.15
+        ret.vEgoStarting = 0.15
 
       if experimental_long:
         ret.pcmCruise = False
@@ -178,14 +177,25 @@ class CarInterface(CarInterfaceBase):
 
       # Tuning
       if use_new_api:
-        ret.longitudinalTuning.kiV = [2.4, 1.5]
+        ret.longitudinalTuning.kiV = [0.5, 0.5]
       else:
         ret.longitudinalTuning.kpV = [2.4, 1.5]
         ret.longitudinalTuning.kiV = [0.36]
 
+      ret.stoppingDecelRate = 3  # reach brake quickly after enabling
+      ret.vEgoStopping = 0.75
+      ret.vEgoStarting = 0.75
+      ret.stopAccel = -1.5
+
       if ret.enableGasInterceptor:
         # Need to set ASCM long limits when using pedal interceptor, instead of camera ACC long limits
         ret.safetyConfigs[0].safetyParam |= Panda.FLAG_GM_HW_ASCM_LONG
+    
+      if params.get_bool("ExperimentalGMTune"):
+        ret.stoppingDecelRate = 1
+        ret.vEgoStopping = 0.5
+        ret.vEgoStarting = 0.5
+        ret.stopAccel = -1
 
     # Start with a baseline tuning for all GM vehicles. Override tuning as needed in each model section below.
     ret.lateralTuning.pid.kiBP, ret.lateralTuning.pid.kpBP = [[0.], [0.]]
