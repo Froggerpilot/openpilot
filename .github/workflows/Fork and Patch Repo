@@ -1,0 +1,67 @@
+name: Fork and Patch Repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: 'Source repository URL (e.g., https://github.com/owner/repo)'
+        required: true
+      source_branch:
+        description: 'Source branch to fork (e.g., main, develop)'
+        required: true
+      new_branch_name:
+        description: 'Name for the new branch'
+        required: true
+      commit_sha:
+        description: 'Commit SHA to apply'
+        required: true
+      commit_repo:
+        description: 'Repository containing the commit (if different from source)'
+        required: false
+
+jobs:
+  fork-and-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Clean repository URL
+        id: clean-url
+        run: |
+          CLEAN_URL=$(echo "${{ github.event.inputs.source_repo }}" | sed 's/\/tree\/.*//g')
+          echo "clean_url=${CLEAN_URL}" >> $GITHUB_OUTPUT
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "${{ github.actor }}"
+          git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Add remotes and fetch
+        run: |
+          git remote add source ${{ steps.clean-url.outputs.clean_url }}
+          git fetch source --no-tags
+          if [ ! -z "${{ github.event.inputs.commit_repo }}" ]; then
+            git remote add commit_source ${{ github.event.inputs.commit_repo }}
+            git fetch commit_source --no-tags
+          fi
+
+      - name: Create new branch
+        run: |
+          git fetch source ${{ github.event.inputs.source_branch }}:refs/remotes/source/${{ github.event.inputs.source_branch }}
+          git checkout -b ${{ github.event.inputs.new_branch_name }} source/${{ github.event.inputs.source_branch }}
+
+      - name: Cherry-pick commit
+        run: |
+          if [ ! -z "${{ github.event.inputs.commit_repo }}" ]; then
+            git cherry-pick ${{ github.event.inputs.commit_sha }}
+          else
+            git fetch source ${{ github.event.inputs.commit_sha }}
+            git cherry-pick ${{ github.event.inputs.commit_sha }}
+          fi
+
+      - name: Push changes
+        run: |
+          git push origin ${{ github.event.inputs.new_branch_name }}
