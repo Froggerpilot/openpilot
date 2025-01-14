@@ -743,5 +743,12 @@ class FrogPilotVariables:
 
     toggle.volt_sng = car_model == "CHEVROLET_VOLT" and (params.get_bool("VoltSNG") if tuning_level >= level["VoltSNG"] else default.get_bool("VoltSNG"))
 
-    params_memory.put("FrogPilotToggles", json.dumps(toggle.__dict__))
+    serializable_dict = {}
+    for key, value in toggle.__dict__.items():
+      try:
+        json.dumps({key: value})
+        serializable_dict[key] = value
+      except TypeError as e:
+        print(f"Serialization Error for key '{key}': {e}")
+    params_memory.put("FrogPilotToggles", json.dumps(serializable_dict))
     params_memory.remove("FrogPilotTogglesUpdated")
