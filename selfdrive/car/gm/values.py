@@ -41,20 +41,13 @@ class CarControllerParams:
     self.ZERO_GAS = 6144  # Coasting
     self.MAX_BRAKE = 400  # ~ -4.0 m/s^2 with regen
 
-    if CP.carFingerprint in CAMERA_ACC_CAR and CP.carFingerprint not in CC_ONLY_CAR:
+    if CP.carFingerprint in (CAMERA_ACC_CAR | SDGM_CAR) and CP.carFingerprint not in CC_ONLY_CAR:
       self.MAX_GAS = 7496
       self.MAX_GAS_PLUS = 8848
       self.MAX_ACC_REGEN = 5610
       self.INACTIVE_REGEN = 5650
       # Camera ACC vehicles have no regen while enabled.
       # Camera transitions to MAX_ACC_REGEN from ZERO_GAS and uses friction brakes instantly
-      self.max_regen_acceleration = 0.
-
-    elif CP.carFingerprint in SDGM_CAR:
-      self.MAX_GAS = 7496
-      self.MAX_GAS_PLUS = 7496
-      self.MAX_ACC_REGEN = 5610
-      self.INACTIVE_REGEN = 5650
       self.max_regen_acceleration = 0.
 
     else:
@@ -240,6 +233,10 @@ class CAR(Platforms):
     [GMCarDocs("Chevrolet TRAX 2024")],
     CarSpecs(mass=1365, wheelbase=2.7, steerRatio=16.4, centerToFrontRatio=0.4),
   )
+  CHEVROLET_VOLT_2019 = GMPlatformConfig(
+    [GMCarDocs("Chevrolet Volt 2019")],
+    GMCarSpecs(mass=1607, wheelbase=2.69, steerRatio=15.7, centerToFrontRatio=0.45),
+  )
 
 
 class CruiseButtons:
@@ -269,6 +266,7 @@ class GMFlags(IntFlag):
   CC_LONG = 2
   NO_CAMERA = 4
   NO_ACCELERATOR_POS_MSG = 8
+  FORCE_BRAKE_C9 = 16
 
 
 # In a Data Module, an identifier is a string used to recognize an object,
