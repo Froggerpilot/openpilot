@@ -28,21 +28,21 @@ jobs:
     - name: Extract Target Repo and Branch
       id: extract-info
       run: |
-        TARGET_URL=${{ github.event.inputs.target_url }}
+        TARGET_URL="${{ github.event.inputs.target_url }}"
         # Extract the target repository and branch from the URL
         TARGET_REPO=$(echo $TARGET_URL | cut -d'/' -f4,5)
         TARGET_BRANCH=$(echo $TARGET_URL | sed -E 's|.*/tree/(.*)|\1|')
 
         echo "TARGET_REPO=${TARGET_REPO}" >> $GITHUB_ENV
         echo "TARGET_BRANCH=${TARGET_BRANCH}" >> $GITHUB_ENV
-        echo "Target Repository: $TARGET_REPO"
-        echo "Target Branch: $TARGET_BRANCH"
+        echo "Target Repository: ${TARGET_REPO}"
+        echo "Target Branch: ${TARGET_BRANCH}"
 
     - name: Generate Branch Name
       id: generate-branch-name
       run: |
         if [ -z "${{ github.event.inputs.new_branch_name }}" ]; then
-          NEW_BRANCH_NAME="copy-${TARGET_BRANCH}"
+          NEW_BRANCH_NAME="copy-${{ env.TARGET_BRANCH }}"
         else
           NEW_BRANCH_NAME="${{ github.event.inputs.new_branch_name }}"
         fi
@@ -55,9 +55,9 @@ jobs:
         git clone https://github.com/${{ env.TARGET_REPO }} external-repo
         cd external-repo
         # Fetch the target branch directly
-        git fetch origin ${TARGET_BRANCH}:${TARGET_BRANCH}
+        git fetch origin ${{ env.TARGET_BRANCH }}:${{ env.TARGET_BRANCH }}
         git branch -r  # Show remote branches to verify it's fetched
-        git checkout ${TARGET_BRANCH} || exit 1  # If branch does not exist, exit with an error
+        git checkout ${{ env.TARGET_BRANCH }} || exit 1  # If branch does not exist, exit with an error
       env:
         TARGET_REPO: ${{ env.TARGET_REPO }}
         TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
@@ -67,4 +67,4 @@ jobs:
         cd external-repo
         git remote set-url origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
         git checkout -b ${{ env.NEW_BRANCH_NAME }}
-        git push --set-upstream origin ${{ env.NEW_B
+        git push --set-upstream origin ${{ env.NEW_BRANCH
