@@ -1,4 +1,4 @@
-name: Copy/Update Branch
+name: Faster Copy/Update Branch
 
 on:
   workflow_dispatch:
