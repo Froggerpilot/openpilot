@@ -21,7 +21,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         repository: Froggerpilot/openpilot
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.FROGGERPILOT_PAT }}
         ref: FrogPilot
 
     - name: Extract Target Repo and Branch
@@ -59,12 +59,12 @@ jobs:
     - name: Create and Push New Branch to Froggerpilot Repository
       run: |
         cd external-repo
-        git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Froggerpilot/openpilot.git
+        git remote set-url origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
         git fetch origin
         git checkout -b ${{ env.NEW_BRANCH_NAME }}  # Create a new branch in the local repo
         git push --force origin ${{ env.NEW_BRANCH_NAME }}  # Push the new branch to the remote
       env:
         TARGET_REPO: ${{ env.TARGET_REPO }}
         TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.FROGGERPILOT_PAT }}
         NEW_BRANCH_NAME: ${{ env.NEW_BRANCH_NAME }}
