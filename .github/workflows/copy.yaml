@@ -20,7 +20,7 @@ jobs:
     - name: Checkout the Froggerpilot Repository
       uses: actions/checkout@v3
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.FROGGERPILOT_PAT }}  # Use the Personal Access Token (PAT)
         repository: Froggerpilot/openpilot
         ref: FrogPilot
 
