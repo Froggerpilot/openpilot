@@ -37,7 +37,16 @@ jobs:
         echo "Target Repository: ${TARGET_REPO}"
         echo "Target Branch: ${TARGET_BRANCH}"
 
-    - name: Generate Branch Name
+    - name: Fetch and Checkout Target Branch
+      run: |
+        git remote add target https://github.com/${{ env.TARGET_REPO }}.git
+        git fetch --depth=1 target ${{ env.TARGET_BRANCH }}:${{ env.TARGET_BRANCH }}
+        git checkout ${{ env.TARGET_BRANCH }}
+      env:
+        TARGET_REPO: ${{ env.TARGET_REPO }}
+        TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
+
+    - name: Generate New Branch Name
       id: generate-branch-name
       run: |
         if [ -z "${{ github.event.inputs.new_branch_name }}" ]; then
@@ -48,24 +57,11 @@ jobs:
         echo "NEW_BRANCH_NAME=${NEW_BRANCH_NAME}" >> $GITHUB_ENV
         echo "New Branch Name: ${NEW_BRANCH_NAME}"
 
-    - name: Clone the Target Repository
+    - name: Create and Push New Branch
       run: |
-        echo "Cloning target repository: ${{ env.TARGET_REPO }}"
-        git clone https://github.com/${{ env.TARGET_REPO }} external-repo
-        cd external-repo
-        git fetch origin ${{ env.TARGET_BRANCH }}:${{ env.TARGET_BRANCH }}
-        git checkout ${{ env.TARGET_BRANCH }} || exit 1
-        git branch -r
-      env:
-        TARGET_REPO: ${{ env.TARGET_REPO }}
-        TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
-
-    - name: Push the Branch to Your Repository
-      run: |
-        cd external-repo
-        git remote set-url origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
         git checkout -b ${{ env.NEW_BRANCH_NAME }}
+        git remote set-url origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
         git push --set-upstream origin ${{ env.NEW_BRANCH_NAME }}
       env:
         NEW_BRANCH_NAME: ${{ env.NEW_BRANCH_NAME }}
-        GITHUB_TOKEN: ${{ secrets.FROGGERPILOT_PAT }}
+        FROGGERPILOT_PAT: ${{ secrets.FROGGERPILOT_PAT }}
