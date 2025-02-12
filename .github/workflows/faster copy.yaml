@@ -23,19 +23,17 @@ jobs:
         token: ${{ secrets.FROGGERPILOT_PAT }}
         repository: Froggerpilot/openpilot
         ref: FrogPilot
-        fetch-depth: 1  # Optimize: Only fetch latest commit
+        fetch-depth: 1
 
     - name: Extract Target Repo and Branch
       id: extract-info
       run: |
-        echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
         TARGET_URL=${{ github.event.inputs.target_url }}
         TARGET_REPO=$(echo $TARGET_URL | sed -E 's|https://github.com/([^/]+/[^/]+).*|\1|')
         TARGET_BRANCH=$(echo $TARGET_URL | sed -E 's|https://github.com/[^/]+/[^/]+/tree/(.+)|\1|')
+        
         echo "TARGET_REPO=${TARGET_REPO}" >> $GITHUB_ENV
         echo "TARGET_BRANCH=${TARGET_BRANCH}" >> $GITHUB_ENV
-        echo "Target Repository: $TARGET_REPO"
-        echo "Target Branch: $TARGET_BRANCH"
 
     - name: Generate Branch Name
       id: generate-branch-name
@@ -46,11 +44,21 @@ jobs:
           NEW_BRANCH_NAME="${{ github.event.inputs.new_branch_name }}"
         fi
         echo "NEW_BRANCH_NAME=${NEW_BRANCH_NAME}" >> $GITHUB_ENV
-        echo "New Branch Name: ${NEW_BRANCH_NAME}"
 
-    - name: Clone External Repository (Shallow, Single Branch)
+    - name: Clone External Repository (Verify Branch Exists)
       run: |
-        git clone --depth=1 --single-branch --branch=${TARGET_BRANCH} https://github.com/${{ env.TARGET_REPO }} external-repo
+        git clone --depth=1 --single-branch --branch=${TARGET_BRANCH} https://github.com/${{ env.TARGET_REPO }} external-repo || {
+          echo "Branch ${TARGET_BRANCH} not found. Fetching all branches..."
+          git clone --depth=1 https://github.com/${{ env.TARGET_REPO }} external-repo
+          cd external-repo
+          git fetch --all
+          if git show-ref --verify --quiet refs/heads/${TARGET_BRANCH}; then
+            git checkout ${TARGET_BRANCH}
+          else
+            echo "Error: Target branch '${TARGET_BRANCH}' does not exist in the repository!"
+            exit 1
+          fi
+        }
       env:
         TARGET_REPO: ${{ env.TARGET_REPO }}
         TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
@@ -61,15 +69,6 @@ jobs:
         git remote remove origin
         git remote add origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
         git checkout -b ${{ env.NEW_BRANCH_NAME }}
-        
-        # Check if branch exists before pushing
-        if git ls-remote --heads origin ${{ env.NEW_BRANCH_NAME }} | grep ${{ env.NEW_BRANCH_NAME }}; then
-          echo "Branch already exists. Skipping push."
-        else
-          git push origin ${{ env.NEW_BRANCH_NAME }}
-        fi
+        git push origin ${{ env.NEW_BRANCH_NAME }}
       env:
-        TARGET_REPO: ${{ env.TARGET_REPO }}
-        TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
         GITHUB_TOKEN: ${{ secrets.FROGGERPILOT_PAT }}
-        NEW_BRANCH_NAME: ${{ env.NEW_BRANCH_NAME }}
