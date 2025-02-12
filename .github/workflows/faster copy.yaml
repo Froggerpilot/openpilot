@@ -45,30 +45,23 @@ jobs:
         fi
         echo "NEW_BRANCH_NAME=${NEW_BRANCH_NAME}" >> $GITHUB_ENV
 
-    - name: Clone External Repository (Verify Branch Exists)
+    - name: Clone the Target Repository
       run: |
-        git clone --depth=1 --single-branch --branch=${TARGET_BRANCH} https://github.com/${{ env.TARGET_REPO }} external-repo || {
-          echo "Branch ${TARGET_BRANCH} not found. Fetching all branches..."
-          git clone --depth=1 https://github.com/${{ env.TARGET_REPO }} external-repo
-          cd external-repo
-          git fetch --all
-          if git show-ref --verify --quiet refs/heads/${TARGET_BRANCH}; then
-            git checkout ${TARGET_BRANCH}
-          else
-            echo "Error: Target branch '${TARGET_BRANCH}' does not exist in the repository!"
-            exit 1
-          fi
-        }
+        git clone https://github.com/${{ env.TARGET_REPO }} external-repo
+        cd external-repo
+        git fetch origin ${TARGET_BRANCH}:${TARGET_BRANCH}
+        git checkout ${TARGET_BRANCH}
       env:
         TARGET_REPO: ${{ env.TARGET_REPO }}
         TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
 
-    - name: Create and Push New Branch to Froggerpilot Repository
+    - name: Push the Branch to Your Repository
       run: |
         cd external-repo
-        git remote remove origin
-        git remote add origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
+        git remote set-url origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
         git checkout -b ${{ env.NEW_BRANCH_NAME }}
-        git push origin ${{ env.NEW_BRANCH_NAME }}
+        git push --set-upstream origin ${{ env.NEW_BRANCH_NAME }}
       env:
+        NEW_BRANCH_NAME: ${{ env.NEW_BRANCH_NAME }}
         GITHUB_TOKEN: ${{ secrets.FROGGERPILOT_PAT }}
+
