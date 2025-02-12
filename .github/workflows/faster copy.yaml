@@ -55,16 +55,4 @@ jobs:
         git clone https://github.com/${{ env.TARGET_REPO }} external-repo
         cd external-repo
         # Fetch the target branch directly
-        git fetch origin ${{ env.TARGET_BRANCH }}:${{ env.TARGET_BRANCH }}
-        git branch -r  # Show remote branches to verify it's fetched
-        git checkout ${{ env.TARGET_BRANCH }} || exit 1  # If branch does not exist, exit with an error
-      env:
-        TARGET_REPO: ${{ env.TARGET_REPO }}
-        TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
-
-    - name: Push the Branch to Your Repository
-      run: |
-        cd external-repo
-        git remote set-url origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
-        git checkout -b ${{ env.NEW_BRANCH_NAME }}
-        git push --set-upstream origin ${{ env.NEW_BRANCH
+        git fetch origin ${{ env.
