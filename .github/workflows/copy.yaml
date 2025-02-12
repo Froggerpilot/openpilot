@@ -56,17 +56,16 @@ jobs:
         TARGET_REPO: ${{ env.TARGET_REPO }}
         TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
 
-- name: Create and Push New Branch to Froggerpilot Repository
-  run: |
-    cd external-repo
-    git remote remove origin
-    git remote add origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
-    git fetch origin
-    git checkout -b ${{ env.NEW_BRANCH_NAME }}
-    git push --force origin ${{ env.NEW_BRANCH_NAME }}
-  env:
-    TARGET_REPO: ${{ env.TARGET_REPO }}
-    TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
-    GITHUB_TOKEN: ${{ secrets.FROGGERPILOT_PAT }}
-    NEW_BRANCH_NAME: ${{ env.NEW_BRANCH_NAME }}
-
+    - name: Create and Push New Branch to Froggerpilot Repository
+      run: |
+        cd external-repo
+        git remote remove origin
+        git remote add origin https://x-access-token:${{ secrets.FROGGERPILOT_PAT }}@github.com/Froggerpilot/openpilot.git
+        git fetch origin
+        git checkout -b ${{ env.NEW_BRANCH_NAME }}
+        git push --force origin ${{ env.NEW_BRANCH_NAME }}
+      env:
+        TARGET_REPO: ${{ env.TARGET_REPO }}
+        TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
+        GITHUB_TOKEN: ${{ secrets.FROGGERPILOT_PAT }}
+        NEW_BRANCH_NAME: ${{ env.NEW_BRANCH_NAME }}
