@@ -1,106 +1,89 @@
-# PFEIFER - MAPD - Modified by FrogAi for FrogPilot to automatically update
+#!/usr/bin/env python3
+# PFEIFER - MAPD - Modified by FrogAi for FrogPilot
 import json
 import os
+import shutil
 import stat
 import subprocess
 import time
 import urllib.request
-import http.client
-import socket
-import openpilot.system.sentry as sentry
 
-from openpilot.common.realtime import Ratekeeper
+from pathlib import Path
 
-from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_functions import is_url_pingable
+from openpilot.selfdrive.frogpilot.frogpilot_utilities import is_url_pingable
+from openpilot.selfdrive.frogpilot.frogpilot_variables import MAPD_PATH
 
-VERSION = 'v1'
+VERSION = "v1"
 
 GITHUB_VERSION_URL = f"https://github.com/FrogAi/FrogPilot-Resources/raw/Versions/mapd_version_{VERSION}.json"
 GITLAB_VERSION_URL = f"https://gitlab.com/FrogAi/FrogPilot-Resources/-/raw/Versions/mapd_version_{VERSION}.json"
 
-MAPD_PATH = '/data/media/0/osm/mapd'
-VERSION_PATH = '/data/media/0/osm/mapd_version'
+VERSION_PATH = Path("/data/media/0/osm/mapd_version")
 
-def get_latest_version():
-  for url in [GITHUB_VERSION_URL, GITLAB_VERSION_URL]:
-    try:
-      with urllib.request.urlopen(url, timeout=5) as response:
-        return json.loads(response.read().decode('utf-8'))['version']
-    except (http.client.IncompleteRead, http.client.RemoteDisconnected, socket.gaierror, socket.timeout, urllib.error.HTTPError, urllib.error.URLError) as e:
-      sentry.capture_exception(e)
-      print(f"Failed to get latest version from {url}. Error: {e}")
-  print("Failed to get the latest version from both sources.")
-  return None
+def download():
+  Path(MAPD_PATH).parent.mkdir(parents=True, exist_ok=True)
 
-def download(current_version):
+  while not (is_url_pingable("https://github.com") or is_url_pingable("https://gitlab.com")):
+    time.sleep(60)
+
+  latest_version = get_latest_version()
+
   urls = [
-    f"https://github.com/pfeiferj/openpilot-mapd/releases/download/{current_version}/mapd",
-    f"https://gitlab.com/FrogAi/FrogPilot-Resources/-/raw/Mapd/{current_version}"
+    f"https://github.com/pfeiferj/openpilot-mapd/releases/download/{latest_version}/mapd",
+    f"https://gitlab.com/FrogAi/FrogPilot-Resources/-/raw/Mapd/{latest_version}"
   ]
-
-  os.makedirs(os.path.dirname(MAPD_PATH), exist_ok=True)
 
   for url in urls:
     try:
-      with urllib.request.urlopen(url, timeout=5) as f:
-        with open(MAPD_PATH, 'wb') as output:
-          output.write(f.read())
-          os.fsync(output)
+      with urllib.request.urlopen(url) as response:
+        with open(MAPD_PATH, "wb") as mapd:
+          shutil.copyfileobj(response, mapd)
+
+          os.fsync(mapd.fileno())
           os.chmod(MAPD_PATH, os.stat(MAPD_PATH).st_mode | stat.S_IEXEC)
+      with open(VERSION_PATH, "w") as version_file:
+        version_file.write(latest_version)
 
-        with open(VERSION_PATH, 'w') as version_file:
-          version_file.write(current_version)
-          os.fsync(version_file)
+        os.fsync(version_file.fileno())
+      return
+    except Exception as error:
+      print(f"Failed to download mapd from {url}: {error}")
 
-      print(f"Successfully downloaded mapd from {url}")
-      return True
-    except (http.client.IncompleteRead, http.client.RemoteDisconnected, socket.gaierror, socket.timeout, urllib.error.HTTPError, urllib.error.URLError) as e:
-      sentry.capture_exception(e)
-      print(f"Failed to download from {url}. Error: {e}")
+def get_latest_version():
+  while not (is_url_pingable("https://github.com") or is_url_pingable("https://gitlab.com")):
+    time.sleep(60)
 
-  print(f"Failed to download mapd for version {current_version} from both sources.")
-  return False
-
-def ensure_mapd_is_running():
-  while True:
+  for url in [GITHUB_VERSION_URL, GITLAB_VERSION_URL]:
     try:
-      subprocess.run([MAPD_PATH], check=True)
-    except Exception as e:
-      sentry.capture_exception(e)
-      print(f"Error running mapd process: {e}")
-    time.sleep(1)
+      with urllib.request.urlopen(url, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))["version"]
+    except Exception as error:
+      print(f"Error fetching mapd version from {url}: {error}")
+  return "v0"
 
-def mapd_thread(sm=None, pm=None):
-  rk = Ratekeeper(0.05)
-
+def mapd_thread():
   while True:
-    try:
-      if is_url_pingable("https://github.com"):
-        current_version = get_latest_version()
-        if current_version:
-          if not os.path.exists(MAPD_PATH):
-            if download(current_version):
-              continue
-          if not os.path.exists(VERSION_PATH):
-            if download(current_version):
-              continue
-          if open(VERSION_PATH).read() != current_version:
-            if download(current_version):
-              continue
-      ensure_mapd_is_running()
-    except Exception as e:
-      sentry.capture_exception(e)
-      print(f"Exception in mapd_thread: {e}")
-      time.sleep(1)
+    if not os.path.exists(MAPD_PATH):
+      print(f"{MAPD_PATH} not found. Downloading...")
+      download()
+      continue
 
-    rk.keep_time()
+    if not os.path.exists(VERSION_PATH):
+      download()
+      continue
 
-def main(sm=None, pm=None):
-  try:
-    mapd_thread(sm, pm)
-  except Exception as e:
-    sentry.capture_exception(e)
-    print(f"Unhandled exception in main: {e}")
+    with open(VERSION_PATH) as version_file:
+      if is_url_pingable("https://github.com") or is_url_pingable("https://gitlab.com"):
+        if version_file.read().strip() != get_latest_version():
+          print("New mapd version available. Downloading...")
+          download()
+          continue
+
+    process = subprocess.Popen(MAPD_PATH)
+    process.wait()
+
+def main():
+  mapd_thread()
 
 if __name__ == "__main__":
   main()

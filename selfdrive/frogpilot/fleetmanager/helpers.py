@@ -20,37 +20,38 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
+import base64
 import json
 import math
 import os
 import requests
 import subprocess
-import time
-# otisserv conversion
-from common.params import Params, ParamKeyType
-from flask import render_template, request, session
-from functools import wraps
-from pathlib import Path
+import traceback
 
-from openpilot.system.hardware import PC
+import openpilot.system.sentry as sentry
+
+from datetime import datetime
+from pathlib import Path
+from typing import List
+from urllib.parse import quote
+
+from openpilot.common.params import ParamKeyType
+from openpilot.selfdrive.car.toyota.carcontroller import LOCK_CMD, UNLOCK_CMD
+from openpilot.system.hardware import HARDWARE, PC
 from openpilot.system.hardware.hw import Paths
 from openpilot.system.loggerd.uploader import listdir_by_creation
-from tools.lib.route import SegmentName
-from typing import List
 from openpilot.system.loggerd.xattr_cache import getxattr
+from panda import Panda
+from tools.lib.route import SegmentName
 
-# otisserv conversion
-from urllib.parse import parse_qs, quote
-import openpilot.system.sentry as sentry
+from openpilot.selfdrive.frogpilot.frogpilot_variables import ERROR_LOGS_PATH, EXCLUDED_KEYS, frogpilot_default_params, params, update_frogpilot_toggles
+
+XOR_KEY = "s8#pL3*Xj!aZ@dWq"
 
 pi = 3.1415926535897932384626
 x_pi = 3.14159265358979324 * 3000.0 / 180.0
 a = 6378245.0
 ee = 0.00669342162296594323
-
-params = Params()
-params_memory = Params("/dev/shm/params")
-params_storage = Params("/persist/params")
 
 PRESERVE_ATTR_NAME = 'user.preserve'
 PRESERVE_ATTR_VALUE = b'1'
@@ -59,11 +60,13 @@ PRESERVE_COUNT = 5
 
 # path to openpilot screen recordings and error logs
 if PC:
-  SCREENRECORD_PATH = os.path.join(str(Path.home()), ".comma", "media", "0", "videos", "")
+  SCREENRECORD_PATH = os.path.join(str(Path.home()), ".comma", "media", "screen_recordings", "")
   ERROR_LOGS_PATH = os.path.join(str(Path.home()), ".comma", "community", "crashes", "")
+  TMUX_LOGS_PATH = os.path.join(str(Path.home()), ".comma", "tmux_logs")
 else:
-  SCREENRECORD_PATH = "/data/media/0/videos/"
-  ERROR_LOGS_PATH = sentry.CRASHES_DIR
+  SCREENRECORD_PATH = "/data/media/screen_recordings/"
+  ERROR_LOGS_PATH = ERROR_LOGS_PATH
+  TMUX_LOGS_PATH = "/data/tmux_logs/"
 
 
 def list_files(path): # still used for footage
@@ -227,26 +230,25 @@ def get_nav_active():
   else:
     return False
 
-def get_public_token():
-  token = params.get("MapboxPublicKey", encoding='utf8')
-  return token.strip() if token is not None else None
-
-def get_app_token():
-  token = params.get("MapboxSecretKey", encoding='utf8')
-  return token.strip() if token is not None else None
-
-def get_gmap_key():
-  token = params.get("GMapKey", encoding='utf8')
-  return token.strip() if token is not None else None
-
 def get_amap_key():
   token = params.get("AMapKey1", encoding='utf8')
   token2 = params.get("AMapKey2", encoding='utf8')
-  return (token.strip() if token is not None else None, token2.strip() if token2 is not None else None)
+  return (token.strip() if token else None, token2.strip() if token2 else None)
 
-def get_SearchInput():
-  SearchInput = params.get_int("SearchInput")
-  return SearchInput
+def get_gmap_key():
+  token = params.get("GMapKey", encoding='utf8')
+  return token.strip() if token else None
+
+def get_public_token():
+  token = params.get("MapboxPublicKey", encoding='utf8')
+  return token.strip() if token and token.startswith("pk") else None
+
+def get_secret_token():
+  token = params.get("MapboxSecretKey", encoding='utf8')
+  return token.strip() if token and token.startswith("sk") else None
+
+def get_search_input():
+  return params.get_int("SearchInput")
 
 def get_last_lon_lat():
   last_pos = params.get("LastGPSPosition")
@@ -262,7 +264,7 @@ def get_locations():
 
 def preload_favs():
   try:
-    nav_destinations = json.loads(params.get("ApiCache_NavDestinations", encoding='utf8'))
+    nav_destinations = json.loads(params.get("ApiCache_NavDestinations", encoding='utf8') or "{}")
   except TypeError:
     return (None, None, None, None, None)
 
@@ -280,7 +282,7 @@ def parse_addr(postvars, lon, lat, valid_addr, token):
   real_addr = None
   if addr != "favorites":
     try:
-      dests = json.loads(params.get("ApiCache_NavDestinations", encoding='utf8'))
+      dests = json.loads(params.get("ApiCache_NavDestinations", encoding='utf8') or "{}")
     except TypeError:
       dests = json.loads("[]")
     for item in dests:
@@ -436,33 +438,170 @@ def transform_lng(lng, lat):
   ret += (150.0 * math.sin(lng / 12.0 * pi) + 300.0 * math.sin(lng / 30.0 * pi)) * 2.0 / 3.0
   return ret
 
+def xor_encrypt_decrypt(data: str, key: str) -> str:
+  return ''.join(chr(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(data))
+
+def encode_parameters(params_dict):
+  serialized_data = json.dumps(params_dict)
+  obfuscated_data = xor_encrypt_decrypt(serialized_data, XOR_KEY)
+  encoded_data = base64.b64encode(obfuscated_data.encode('utf-8')).decode('utf-8')
+  return encoded_data
+
+def decode_parameters(encoded_string):
+  obfuscated_data = base64.b64decode(encoded_string.encode('utf-8')).decode('utf-8')
+  decrypted_data = xor_encrypt_decrypt(obfuscated_data, XOR_KEY)
+  return json.loads(decrypted_data)
+
 def get_all_toggle_values():
   toggle_values = {}
+  for key, _, _ in frogpilot_default_params:
+    if key in EXCLUDED_KEYS:
+      continue
+    raw_value = params.get(key)
+    if isinstance(raw_value, bytes):
+      value = raw_value.decode('utf-8')
+    else:
+      value = raw_value or "0"
+    toggle_values[key] = value
 
-  for key in params.all_keys():
-    key = key.decode('utf-8') if isinstance(key, bytes) else key
-    if params.get_key_type(key) & ParamKeyType.FROGPILOT_STORAGE:
-      try:
-        value = params.get(key)
-        value = value.decode('utf-8') if isinstance(value, bytes) else value
-        if isinstance(value, str) and value.replace('.', '', 1).isdigit():
-          value = float(value) if '.' in value else int(value)
-      except Exception:
-        value = "0"
-      toggle_values[key] = value if value is not None else "0"
+  return encode_parameters(toggle_values)
 
-  return toggle_values
+def reset_toggle_values():
+  params.put_bool("DoToggleReset", True)
+  HARDWARE.reboot()
 
-def store_toggle_values(updated_values):
-  for key, value in updated_values.items():
-    try:
-      if isinstance(value, (int, float)):
-        value = str(value)
-      params.put(key, value.encode('utf-8'))
-      params_storage.put(key, value.encode('utf-8'))
-    except Exception as e:
-      print(f"Failed to update {key}: {e}")
+def store_toggle_values(request_data):
+  allowed_keys = {key for key, _, _ in frogpilot_default_params}
+  allowed_keys -= EXCLUDED_KEYS
 
-  params_memory.put_bool("FrogPilotTogglesUpdated", True)
-  time.sleep(1)
-  params_memory.put_bool("FrogPilotTogglesUpdated", False)
+  toggle_values = decode_parameters(request_data['data'])
+  for key, value in toggle_values.items():
+    if key not in allowed_keys:
+      continue
+    params.put(key, value)
+
+  update_frogpilot_toggles()
+
+def capture_tmux_log():
+  os.makedirs(TMUX_LOGS_PATH, exist_ok=True)
+
+  timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+  log_filename = f"tmux_log_{timestamp}.txt"
+  log_path = os.path.join(TMUX_LOGS_PATH, log_filename)
+
+  try:
+    subprocess.run(["tmux", "capture-pane", "-J", "-S", "-"], check=True)
+    result = subprocess.run(["tmux", "show-buffer"], capture_output=True, text=True, check=True)
+
+    with open(log_path, "w", encoding="utf-8") as log_file:
+      log_file.write(result.stdout)
+
+    subprocess.run(["tmux", "delete-buffer"], check=True)
+
+    return log_filename
+
+  except subprocess.CalledProcessError as e:
+    raise Exception(f"Error capturing tmux log: {e}")
+
+def lock_doors():
+  try:
+    print("Attempting to lock doors...")
+
+    panda = Panda()
+    print(f"Panda connected: {panda.get_usb_serial()}")
+    print(f"Firmware Version: {panda.get_version()}")
+    print(f"Hardware Type: {panda.get_type()}")
+    initial_safety = panda.health()["safety_mode"]
+    print(f"Initial Safety Mode: {initial_safety}")
+
+    os.system("pkill -STOP -f pandad")
+
+    print("Setting safety mode to SAFETY_TOYOTA...")
+    panda.set_safety_mode(panda.SAFETY_TOYOTA)
+
+    new_safety = panda.health()["safety_mode"]
+    print(f"Safety Mode after change: {new_safety}")
+
+    if new_safety != panda.SAFETY_TOYOTA:
+      print("Failed to set SAFETY_TOYOTA! Aborting.")
+      return
+
+    can_health = panda.can_health(0)
+    print(f"CAN0 Health: {can_health}")
+
+    print(f"Sending CAN message to lock doors (ID=0x750, CMD={LOCK_CMD.hex()})...")
+    panda.can_send(0x750, LOCK_CMD, 0)
+
+    new_can_health = panda.can_health(0)
+    print(f"CAN0 Health after send: {new_can_health}")
+
+    final_safety = panda.health()["safety_mode"]
+    print(f"Final Safety Mode: {final_safety}")
+
+    print("Sending Panda heartbeat...")
+    panda.send_heartbeat()
+
+    print("Closing Panda connection.")
+    panda.close()
+
+    print("Lock doors operation completed successfully!")
+
+    print("Starting the pandad process...")
+    os.system("pkill -CONT -f pandad")
+
+  except Exception as error:
+    print(f"Error in lock_doors(): {error}")
+    print(traceback.format_exc())
+
+def unlock_doors():
+  try:
+    print("Attempting to unlock doors...")
+
+    panda = Panda()
+    print(f"Panda connected: {panda.get_usb_serial()}")
+    print(f"Firmware Version: {panda.get_version()}")
+    print(f"Hardware Type: {panda.get_type()}")
+    initial_safety = panda.health()["safety_mode"]
+    print(f"Initial Safety Mode: {initial_safety}")
+
+    os.system("pkill -STOP -f pandad")
+
+    print("Setting safety mode to SAFETY_TOYOTA...")
+    panda.set_safety_mode(panda.SAFETY_TOYOTA)
+
+    new_safety = panda.health()["safety_mode"]
+    print(f"Safety Mode after change: {new_safety}")
+
+    if new_safety != panda.SAFETY_TOYOTA:
+      print("Failed to set SAFETY_TOYOTA! Aborting.")
+      return
+
+    can_health = panda.can_health(0)
+    print(f"CAN0 Health: {can_health}")
+
+    print(f"Sending CAN message to unlock doors (ID=0x750, CMD={UNLOCK_CMD.hex()})...")
+    panda.can_send(0x750, UNLOCK_CMD, 0)
+
+    new_can_health = panda.can_health(0)
+    print(f"CAN0 Health after send: {new_can_health}")
+
+    final_safety = panda.health()["safety_mode"]
+    print(f"Final Safety Mode: {final_safety}")
+
+    print("Sending Panda heartbeat...")
+    panda.send_heartbeat()
+
+    print("Closing Panda connection.")
+    panda.close()
+
+    print("Unlock doors operation completed successfully!")
+
+    print("Starting the pandad process...")
+    os.system("pkill -CONT -f pandad")
+
+  except Exception as error:
+    print(f"Error in unlock_doors(): {error}")
+    print(traceback.format_exc())
+
+def reboot_device():
+  HARDWARE.reboot()

@@ -1,12 +1,10 @@
 """Install exception handler for process crash."""
-import os
+import psutil
 import sentry_sdk
-import subprocess
-import time
 import traceback
-
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from sentry_sdk.integrations.threading import ThreadingIntegration
 
 from openpilot.common.params import Params, ParamKeyType
@@ -15,190 +13,140 @@ from openpilot.system.hardware import HARDWARE, PC
 from openpilot.common.swaglog import cloudlog
 from openpilot.system.version import get_build_metadata, get_version
 
-from openpilot.selfdrive.frogpilot.controls.lib.frogpilot_functions import is_url_pingable
-
-CRASHES_DIR = "/data/crashes/"
+from openpilot.selfdrive.frogpilot.frogpilot_variables import ERROR_LOGS_PATH
 
 class SentryProject(Enum):
   # python project
-  SELFDRIVE = "https://b42f6e8bea596ec3d7dc1d9a80280027@o4507524429185024.ingest.us.sentry.io/4507524452057088"
+  SELFDRIVE = "https://0c2fea9f108f30f51d26ee7d259580ea@o4505034923769856.ingest.us.sentry.io/4505034930651136"
   # native project
-  SELFDRIVE_NATIVE = "https://b42f6e8bea596ec3d7dc1d9a80280027@o4507524429185024.ingest.us.sentry.io/4507524452057088"
-
-
-def bind_user() -> None:
-  sentry_sdk.set_user({"id": HARDWARE.get_serial()})
-
-
-def capture_tmux(params) -> None:
-  updated = params.get("Updated", encoding='utf-8')
-
-  try:
-    result = subprocess.run(['tmux', 'capture-pane', '-p', '-S', '-250'], stdout=subprocess.PIPE)
-    lines = result.stdout.decode('utf-8').splitlines()
-
-    if lines:
-      while True:
-        if sentry_pinged():
-          with sentry_sdk.configure_scope() as scope:
-            bind_user()
-            scope.set_extra("tmux_log", "\n".join(lines))
-            sentry_sdk.capture_message(f"User's UI crashed ({updated})", level='error')
-            sentry_sdk.flush()
-          break
-        time.sleep(60)
-
-  except Exception:
-    cloudlog.exception("Failed to capture tmux log")
+  SELFDRIVE_NATIVE = "https://0c2fea9f108f30f51d26ee7d259580ea@o4505034923769856.ingest.us.sentry.io/4505034930651136"
 
 
 def report_tombstone(fn: str, message: str, contents: str) -> None:
-  no_internet = 0
-  while True:
-    if is_url_pingable("https://sentry.io"):
-      cloudlog.error({'tombstone': message})
+  cloudlog.error({'tombstone': message})
 
-      with sentry_sdk.configure_scope() as scope:
-        bind_user()
-        scope.set_extra("tombstone_fn", fn)
-        scope.set_extra("tombstone", contents)
-        sentry_sdk.capture_message(message=message)
-        sentry_sdk.flush()
-      break
-    elif no_internet > 10:
-      break
-    else:
-      no_internet += 1
-      time.sleep(no_internet * 60)
-
-
-def capture_fingerprint(candidate, params, blocked=False):
-  bind_user()
-
-  params_tracking = Params("/persist/tracking")
-
-  param_types = {
-    "FrogPilot Controls": ParamKeyType.FROGPILOT_CONTROLS,
-    "FrogPilot Vehicles": ParamKeyType.FROGPILOT_VEHICLES,
-    "FrogPilot Visuals": ParamKeyType.FROGPILOT_VISUALS,
-    "FrogPilot Other": ParamKeyType.FROGPILOT_OTHER,
-    "FrogPilot Tracking": ParamKeyType.FROGPILOT_TRACKING
-  }
-
-  matched_params = {label: {} for label in param_types}
-  for key in params.all_keys():
-    for label, key_type in param_types.items():
-      if params.get_key_type(key) & key_type:
-        if key_type == ParamKeyType.FROGPILOT_TRACKING:
-          try:
-            value = params_tracking.get_int(key)
-          except Exception:
-            value = "0"
-        else:
-          try:
-            value = params.get(key)
-            if isinstance(value, bytes):
-              value = value.decode('utf-8')
-            if isinstance(value, str) and value.replace('.', '', 1).isdigit():
-              value = float(value) if '.' in value else int(value)
-          except Exception:
-            value = "0"
-        matched_params[label][key.decode('utf-8')] = value
-
-  for label, key_values in matched_params.items():
-    if label == "FrogPilot Tracking":
-      matched_params[label] = {k: f"{v:,}" for k, v in key_values.items()}
-    else:
-      matched_params[label] = {k: int(v) if isinstance(v, float) and v.is_integer() else v for k, v in sorted(key_values.items())}
-
-  no_internet = 0
-  while True:
-    if is_url_pingable("https://sentry.io"):
-      with sentry_sdk.configure_scope() as scope:
-        scope.fingerprint = [candidate, HARDWARE.get_serial()]
-        for label, key_values in matched_params.items():
-          scope.set_extra(label, "\n".join([f"{k}: {v}" for k, v in key_values.items()]))
-
-      if blocked:
-        sentry_sdk.capture_message("Blocked user from using the development branch", level='error')
-      else:
-        sentry_sdk.capture_message(f"Fingerprinted {candidate}", level='info')
-        params.put_bool_nonblocking("FingerprintLogged", True)
-
-      sentry_sdk.flush()
-      break
-    elif no_internet > 10:
-      break
-    else:
-      no_internet += 1
-      time.sleep(no_internet * 60)
+  with sentry_sdk.configure_scope() as scope:
+    scope.set_extra("tombstone_fn", fn)
+    scope.set_extra("tombstone", contents)
+    sentry_sdk.capture_message(message=message)
+    sentry_sdk.flush()
 
 
 def capture_exception(*args, **kwargs) -> None:
   exc_text = traceback.format_exc()
 
   phrases_to_check = [
-    "To overwrite it, set 'overwrite' to True.",
+    "already exists. To overwrite it, set 'overwrite' to True",
+    "setup_quectel failed after retry",
   ]
 
   if any(phrase in exc_text for phrase in phrases_to_check):
     return
 
   save_exception(exc_text)
-  cloudlog.error("crash", exc_info=kwargs.get('exc_info', 1))
+  cloudlog.error("crash", exc_info=kwargs.get("exc_info", 1))
 
   try:
-    bind_user()
     sentry_sdk.capture_exception(*args, **kwargs)
     sentry_sdk.flush()  # https://github.com/getsentry/sentry-python/issues/291
   except Exception:
     cloudlog.exception("sentry exception")
 
 
-def save_exception(exc_text: str) -> None:
-  if not os.path.exists(CRASHES_DIR):
-    os.makedirs(CRASHES_DIR)
+def capture_memory_log():
+  virtual_memory = psutil.virtual_memory()
+  total_used = virtual_memory.used
+  total_memory = virtual_memory.total
 
-  files = [
-    os.path.join(CRASHES_DIR, datetime.now().strftime('%Y-%m-%d--%H-%M-%S.log')),
-    os.path.join(CRASHES_DIR, 'error.txt')
-  ]
-
-  for file in files:
-    with open(file, 'w') as f:
-      if file.endswith("error.txt"):
-        lines = exc_text.splitlines()[-10:]
-        f.write("\n".join(lines))
+  process_list = []
+  for process in psutil.process_iter(['pid', 'username', 'memory_percent', 'cmdline', 'name']):
+    try:
+      mem_percent = process.info.get('memory_percent', 0)
+      cmdline = process.info.get('cmdline')
+      if cmdline and len(cmdline) > 0:
+        command = " ".join(cmdline)
       else:
-        f.write(exc_text)
+        command = process.info.get('name', '')
+      process_list.append({
+        "pid": process.info['pid'],
+        "user": process.info.get('username', ''),
+        "memory_usage_percent": mem_percent,
+        "command": command
+      })
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+      continue
 
-  print('Logged current crash to {}'.format(files))
+  process_list.sort(key=lambda process: process['memory_usage_percent'], reverse=True)
+  top_processes = process_list[:5]
+
+  message = (
+    f"High memory detected: "
+    f"{(total_used / total_memory) * 100:.2f}% of total."
+  )
+
+  with sentry_sdk.push_scope() as scope:
+    scope.set_extra("total_memory_usage_percent", (total_used / total_memory) * 100)
+    scope.set_extra("top_processes", top_processes)
+    scope.set_extra("updater_state", Params().get("UpdaterState", encoding="utf-8"))
+    sentry_sdk.capture_message(message, level="fatal")
+    sentry_sdk.flush()
+
+
+def capture_report(discord_user, report, frogpilot_toggles):
+  error_file_path = ERROR_LOGS_PATH / "error.txt"
+  error_content = "No error log found."
+
+  if error_file_path.exists():
+    error_content = error_file_path.read_text()
+
+  with sentry_sdk.push_scope() as scope:
+    scope.set_context("Error Log", {"content": error_content})
+    scope.set_context("Toggle Values", frogpilot_toggles)
+    sentry_sdk.capture_message(f"{discord_user} submitted report: {report}", level="fatal")
+    sentry_sdk.flush()
 
 
 def set_tag(key: str, value: str) -> None:
   sentry_sdk.set_tag(key, value)
 
 
+def save_exception(exc_text: str) -> None:
+  files = [
+    ERROR_LOGS_PATH / datetime.now().strftime("%Y-%m-%d--%H-%M-%S.log"),
+    ERROR_LOGS_PATH / "error.txt"
+  ]
+
+  for file_path in files:
+    if file_path.name == "error.txt":
+      lines = exc_text.splitlines()[-10:]
+      file_path.write_text("\n".join(lines))
+    else:
+      file_path.write_text(exc_text)
+
+  print(f"Logged current crash to {[str(file) for file in files]}")
+
+
 def init(project: SentryProject) -> bool:
   build_metadata = get_build_metadata()
-  FrogPilot = "FrogAi" in build_metadata.openpilot.git_origin
+  FrogPilot = "frogai" in build_metadata.openpilot.git_origin.lower()
   if not FrogPilot or PC:
     return False
-
-  params = Params()
-  installed = params.get("InstallDate", encoding='utf-8')
-  updated = params.get("Updated", encoding='utf-8')
 
   short_branch = build_metadata.channel
 
   if short_branch == "FrogPilot-Development":
     env = "Development"
-  elif build_metadata.tested_channel:
-    env = "Staging"
   elif build_metadata.release_channel:
     env = "Release"
+  elif build_metadata.tested_channel:
+    env = "Staging"
   else:
     env = short_branch
+
+  params = Params()
+  dongle_id = params.get("DongleId", encoding="utf-8")
+  installed = params.get("InstallDate", encoding="utf-8")
+  updated = params.get("Updated", encoding="utf-8")
 
   integrations = []
   if project == SentryProject.SELFDRIVE:
@@ -209,12 +157,10 @@ def init(project: SentryProject) -> bool:
                   release=get_version(),
                   integrations=integrations,
                   traces_sample_rate=1.0,
-                  max_value_length=98304,
+                  max_value_length=8192,
                   environment=env)
 
-  build_metadata = get_build_metadata()
-
-  sentry_sdk.set_user({"id": HARDWARE.get_serial()})
+  sentry_sdk.set_user({"id": dongle_id})
   sentry_sdk.set_tag("origin", build_metadata.openpilot.git_origin)
   sentry_sdk.set_tag("branch", short_branch)
   sentry_sdk.set_tag("commit", build_metadata.openpilot.git_commit)
